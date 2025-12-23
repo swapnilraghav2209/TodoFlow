@@ -4,7 +4,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { addDays, addWeeks, addMonths } from 'date-fns';
 
-export type FilterType = 'all' | 'completed' | 'pending';
+export type FilterType = 'all' | 'completed' | 'pending' | 'overdue' | 'today' | 'upcoming';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -67,6 +67,24 @@ export function useTodos() {
   const addTodo = async (title: string, description?: string) => {
     if (!user) return;
 
+    // Optimistic update
+    const tempId = crypto.randomUUID();
+    const newTodo: Todo = {
+      id: tempId,
+      user_id: user.id,
+      title,
+      description: description || null,
+      completed: false,
+      due_date: null,
+      is_recurring: false,
+      recurrence_pattern: null,
+      recurrence_interval: null,
+      next_occurrence: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    setTodos(prev => [newTodo, ...prev]);
+
     const { error } = await supabase.from('todos').insert({
       user_id: user.id,
       title,
@@ -75,6 +93,8 @@ export function useTodos() {
     });
 
     if (error) {
+      // Rollback on error
+      setTodos(prev => prev.filter(t => t.id !== tempId));
       toast({
         title: 'Error adding todo',
         description: error.message,
@@ -103,7 +123,28 @@ export function useTodos() {
   const toggleComplete = async (todo: Todo) => {
     const newCompleted = !todo.completed;
     
-    await updateTodo(todo.id, { completed: newCompleted });
+    // Optimistic update
+    setTodos(prev => prev.map(t => 
+      t.id === todo.id ? { ...t, completed: newCompleted } : t
+    ));
+    
+    const { error } = await supabase
+      .from('todos')
+      .update({ completed: newCompleted, updated_at: new Date().toISOString() })
+      .eq('id', todo.id);
+
+    if (error) {
+      // Rollback on error
+      setTodos(prev => prev.map(t => 
+        t.id === todo.id ? { ...t, completed: !newCompleted } : t
+      ));
+      toast({
+        title: 'Error updating todo',
+        description: error.message,
+        variant: 'destructive'
+      });
+      return;
+    }
 
     if (newCompleted && todo.is_recurring && todo.recurrence_pattern && todo.recurrence_interval) {
       const baseDate = todo.due_date ? new Date(todo.due_date) : new Date();
@@ -140,9 +181,17 @@ export function useTodos() {
   };
 
   const deleteTodo = async (id: string) => {
+    // Optimistic update
+    const deletedTodo = todos.find(t => t.id === id);
+    setTodos(prev => prev.filter(t => t.id !== id));
+
     const { error } = await supabase.from('todos').delete().eq('id', id);
 
     if (error) {
+      // Rollback on error
+      if (deletedTodo) {
+        setTodos(prev => [...prev, deletedTodo]);
+      }
       toast({
         title: 'Error deleting todo',
         description: error.message,
@@ -154,6 +203,10 @@ export function useTodos() {
   };
 
   const filteredTodos = todos.filter(todo => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueDate = todo.due_date ? new Date(todo.due_date) : null;
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (!todo.title.toLowerCase().includes(query) && 
@@ -167,6 +220,15 @@ export function useTodos() {
         return todo.completed;
       case 'pending':
         return !todo.completed;
+      case 'overdue':
+        return !todo.completed && dueDate && dueDate < today;
+      case 'today':
+        return dueDate && 
+          dueDate.getFullYear() === today.getFullYear() &&
+          dueDate.getMonth() === today.getMonth() &&
+          dueDate.getDate() === today.getDate();
+      case 'upcoming':
+        return !todo.completed && dueDate && dueDate > today;
       default:
         return true;
     }
@@ -175,7 +237,11 @@ export function useTodos() {
   const stats = {
     total: todos.length,
     completed: todos.filter(t => t.completed).length,
-    pending: todos.filter(t => !t.completed).length
+    pending: todos.filter(t => !t.completed).length,
+    overdue: todos.filter(t => {
+      if (t.completed || !t.due_date) return false;
+      return new Date(t.due_date) < new Date();
+    }).length
   };
 
   return {

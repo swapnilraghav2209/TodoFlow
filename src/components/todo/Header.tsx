@@ -8,6 +8,7 @@ type HeaderProps = {
     total: number;
     completed: number;
     pending: number;
+    overdue: number;
   };
   onSignOut: () => void;
 };
