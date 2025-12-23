@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, X, ListTodo, CheckCircle2, Circle, AlertTriangle, Calendar, CalendarClock } from 'lucide-react';
+import { Search, X, ListTodo, CheckCircle2, Circle } from 'lucide-react';
 import { FilterType } from '@/hooks/useTodos';
 import { cn } from '@/lib/utils';
 
@@ -13,7 +13,6 @@ type TodoFiltersProps = {
     total: number;
     completed: number;
     pending: number;
-    overdue: number;
   };
 };
 
@@ -21,9 +20,6 @@ const filters: { value: FilterType; label: string; icon: React.ElementType }[] =
   { value: 'all', label: 'All', icon: ListTodo },
   { value: 'pending', label: 'Pending', icon: Circle },
   { value: 'completed', label: 'Done', icon: CheckCircle2 },
-  { value: 'overdue', label: 'Overdue', icon: AlertTriangle },
-  { value: 'today', label: 'Today', icon: Calendar },
-  { value: 'upcoming', label: 'Upcoming', icon: CalendarClock },
 ];
 
 export default function TodoFilters({ filter, onFilterChange, searchQuery, onSearchChange, stats }: TodoFiltersProps) {
@@ -32,7 +28,6 @@ export default function TodoFilters({ filter, onFilterChange, searchQuery, onSea
       case 'all': return stats.total;
       case 'completed': return stats.completed;
       case 'pending': return stats.pending;
-      case 'overdue': return stats.overdue;
       default: return null;
     }
   };
