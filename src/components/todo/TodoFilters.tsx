@@ -14,6 +14,8 @@ type TodoFiltersProps = {
     completed: number;
     pending: number;
     overdue: number;
+    today: number;
+    upcoming: number;
   };
 };
 
@@ -33,6 +35,8 @@ export default function TodoFilters({ filter, onFilterChange, searchQuery, onSea
       case 'completed': return stats.completed;
       case 'pending': return stats.pending;
       case 'overdue': return stats.overdue;
+      case 'today': return stats.today;
+      case 'upcoming': return stats.upcoming;
       default: return null;
     }
   };
@@ -62,7 +66,7 @@ export default function TodoFilters({ filter, onFilterChange, searchQuery, onSea
         {filters.map(({ value, label, icon: Icon }) => {
           const count = getCount(value);
           const isActive = filter === value;
-          
+
           return (
             <Button
               key={value}
@@ -71,7 +75,7 @@ export default function TodoFilters({ filter, onFilterChange, searchQuery, onSea
               onClick={() => onFilterChange(value)}
               className={cn(
                 "h-9 px-3 rounded-full transition-all",
-                isActive 
+                isActive
                   ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground glow-sm"
                   : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
               )}

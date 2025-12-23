@@ -1,7 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useTodos } from '@/hooks/useTodos';
 import Header from '@/components/todo/Header';
-import TodoInput from '@/components/todo/TodoInput';
+import TodoAddDialog from '@/components/todo/TodoAddDialog';
 import TodoFilters from '@/components/todo/TodoFilters';
 import TodoList from '@/components/todo/TodoList';
 import { Loader2 } from 'lucide-react';
@@ -33,10 +33,10 @@ export default function Dashboard() {
 
       <div className="relative max-w-4xl mx-auto px-4 py-8">
         <Header user={user} stats={stats} onSignOut={signOut} />
-        
+
         <div className="mt-8 space-y-6">
-          <TodoInput onAdd={addTodo} />
-          
+          <TodoAddDialog onAdd={addTodo} />
+
           <TodoFilters
             filter={filter}
             onFilterChange={setFilter}
@@ -45,7 +45,7 @@ export default function Dashboard() {
             stats={stats}
           />
 
-          {loading ? (
+          {loading && todos.length === 0 ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>

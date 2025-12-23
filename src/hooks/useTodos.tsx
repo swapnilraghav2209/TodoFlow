@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, Todo } from '@/lib/supabase';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
@@ -14,10 +14,12 @@ export function useTodos() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const fetchTodos = useCallback(async () => {
+  const fetchTodos = useCallback(async (showLoading = true) => {
     if (!user) return;
-    
-    setLoading(true);
+
+    if (showLoading) {
+      setLoading(true);
+    }
     const { data, error } = await supabase
       .from('todos')
       .select('*')
@@ -33,11 +35,13 @@ export function useTodos() {
     } else {
       setTodos(data || []);
     }
-    setLoading(false);
+    if (showLoading) {
+      setLoading(false);
+    }
   }, [user, toast]);
 
   useEffect(() => {
-    fetchTodos();
+    fetchTodos(true);
   }, [fetchTodos]);
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function useTodos() {
           filter: `user_id=eq.${user.id}`
         },
         () => {
-          fetchTodos();
+          fetchTodos(false);
         }
       )
       .subscribe();
@@ -64,7 +68,14 @@ export function useTodos() {
     };
   }, [user, fetchTodos]);
 
-  const addTodo = async (title: string, description?: string) => {
+  const addTodo = async (
+    title: string,
+    description?: string,
+    dueDate?: string,
+    isRecurring?: boolean,
+    recurrencePattern?: 'daily' | 'weekly' | 'monthly',
+    recurrenceInterval?: number
+  ) => {
     if (!user) return;
 
     // Optimistic update
@@ -75,10 +86,10 @@ export function useTodos() {
       title,
       description: description || null,
       completed: false,
-      due_date: null,
-      is_recurring: false,
-      recurrence_pattern: null,
-      recurrence_interval: null,
+      due_date: dueDate || null,
+      is_recurring: isRecurring || false,
+      recurrence_pattern: recurrencePattern || null,
+      recurrence_interval: recurrenceInterval || null,
       next_occurrence: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -89,7 +100,11 @@ export function useTodos() {
       user_id: user.id,
       title,
       description: description || null,
-      completed: false
+      completed: false,
+      due_date: dueDate || null,
+      is_recurring: isRecurring || false,
+      recurrence_pattern: recurrencePattern || null,
+      recurrence_interval: recurrenceInterval || null
     });
 
     if (error) {
@@ -101,33 +116,47 @@ export function useTodos() {
         variant: 'destructive'
       });
     } else {
-      toast({ title: 'Todo added!' });
+      toast({ title: 'Task created successfully!' });
     }
   };
 
   const updateTodo = async (id: string, updates: Partial<Todo>) => {
+    // Store old todo for rollback
+    const oldTodo = todos.find(t => t.id === id);
+
+    // Optimistic update
+    setTodos(prev => prev.map(t =>
+      t.id === id ? { ...t, ...updates, updated_at: new Date().toISOString() } : t
+    ));
+
     const { error } = await supabase
       .from('todos')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id);
 
     if (error) {
+      // Rollback on error
+      if (oldTodo) {
+        setTodos(prev => prev.map(t => t.id === id ? oldTodo : t));
+      }
       toast({
         title: 'Error updating todo',
         description: error.message,
         variant: 'destructive'
       });
+    } else {
+      toast({ title: 'Todo updated!' });
     }
   };
 
   const toggleComplete = async (todo: Todo) => {
     const newCompleted = !todo.completed;
-    
+
     // Optimistic update
-    setTodos(prev => prev.map(t => 
+    setTodos(prev => prev.map(t =>
       t.id === todo.id ? { ...t, completed: newCompleted } : t
     ));
-    
+
     const { error } = await supabase
       .from('todos')
       .update({ completed: newCompleted, updated_at: new Date().toISOString() })
@@ -135,7 +164,7 @@ export function useTodos() {
 
     if (error) {
       // Rollback on error
-      setTodos(prev => prev.map(t => 
+      setTodos(prev => prev.map(t =>
         t.id === todo.id ? { ...t, completed: !newCompleted } : t
       ));
       toast({
@@ -202,47 +231,68 @@ export function useTodos() {
     }
   };
 
-  const filteredTodos = todos.filter(todo => {
+  const filteredTodos = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dueDate = todo.due_date ? new Date(todo.due_date) : null;
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      if (!todo.title.toLowerCase().includes(query) && 
+    return todos.filter(todo => {
+      const dueDate = todo.due_date ? new Date(todo.due_date) : null;
+      const dueDateMidnight = dueDate ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()) : null;
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        if (!todo.title.toLowerCase().includes(query) &&
           !todo.description?.toLowerCase().includes(query)) {
-        return false;
+          return false;
+        }
       }
-    }
 
-    switch (filter) {
-      case 'completed':
-        return todo.completed;
-      case 'pending':
-        return !todo.completed;
-      case 'overdue':
-        return !todo.completed && dueDate && dueDate < today;
-      case 'today':
-        return dueDate && 
-          dueDate.getFullYear() === today.getFullYear() &&
-          dueDate.getMonth() === today.getMonth() &&
-          dueDate.getDate() === today.getDate();
-      case 'upcoming':
-        return !todo.completed && dueDate && dueDate > today;
-      default:
-        return true;
-    }
-  });
+      switch (filter) {
+        case 'completed':
+          return todo.completed;
+        case 'pending':
+          return !todo.completed;
+        case 'overdue':
+          return !todo.completed && dueDateMidnight && dueDateMidnight < today;
+        case 'today':
+          return dueDateMidnight &&
+            dueDateMidnight.getTime() === today.getTime();
+        case 'upcoming':
+          return !todo.completed && dueDateMidnight && dueDateMidnight > today;
+        default:
+          return true;
+      }
+    });
+  }, [todos, filter, searchQuery]);
 
-  const stats = {
-    total: todos.length,
-    completed: todos.filter(t => t.completed).length,
-    pending: todos.filter(t => !t.completed).length,
-    overdue: todos.filter(t => {
-      if (t.completed || !t.due_date) return false;
-      return new Date(t.due_date) < new Date();
-    }).length
-  };
+  const stats = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    return {
+      total: todos.length,
+      completed: todos.filter(t => t.completed).length,
+      pending: todos.filter(t => !t.completed).length,
+      overdue: todos.filter(t => {
+        if (t.completed || !t.due_date) return false;
+        const taskDate = new Date(t.due_date);
+        const taskMidnight = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
+        return taskMidnight < today;
+      }).length,
+      today: todos.filter(t => {
+        if (!t.due_date) return false;
+        const taskDate = new Date(t.due_date);
+        const taskMidnight = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
+        return taskMidnight.getTime() === today.getTime();
+      }).length,
+      upcoming: todos.filter(t => {
+        if (t.completed || !t.due_date) return false;
+        const taskDate = new Date(t.due_date);
+        const taskMidnight = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
+        return taskMidnight > today;
+      }).length
+    };
+  }, [todos]);
 
   return {
     todos: filteredTodos,
