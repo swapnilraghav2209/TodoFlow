@@ -38,8 +38,8 @@ export default function AuthPage() {
           }
         } else {
           toast({
-            title: 'Account created!',
-            description: 'Check your email to verify your account, or you may be logged in directly.'
+            title: 'Welcome to TodoFlow!',
+            description: 'Your account has been created successfully.'
           });
         }
       } else {
