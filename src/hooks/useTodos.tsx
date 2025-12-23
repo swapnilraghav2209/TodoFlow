@@ -4,7 +4,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { addDays, addWeeks, addMonths } from 'date-fns';
 
-export type FilterType = 'all' | 'completed' | 'pending' | 'overdue' | 'today' | 'upcoming';
+export type FilterType = 'all' | 'completed' | 'pending';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -154,10 +154,6 @@ export function useTodos() {
   };
 
   const filteredTodos = todos.filter(todo => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dueDate = todo.due_date ? new Date(todo.due_date) : null;
-
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (!todo.title.toLowerCase().includes(query) && 
@@ -171,15 +167,6 @@ export function useTodos() {
         return todo.completed;
       case 'pending':
         return !todo.completed;
-      case 'overdue':
-        return !todo.completed && dueDate && dueDate < today;
-      case 'today':
-        return dueDate && 
-          dueDate.getFullYear() === today.getFullYear() &&
-          dueDate.getMonth() === today.getMonth() &&
-          dueDate.getDate() === today.getDate();
-      case 'upcoming':
-        return !todo.completed && dueDate && dueDate > today;
       default:
         return true;
     }
@@ -188,11 +175,7 @@ export function useTodos() {
   const stats = {
     total: todos.length,
     completed: todos.filter(t => t.completed).length,
-    pending: todos.filter(t => !t.completed).length,
-    overdue: todos.filter(t => {
-      if (t.completed || !t.due_date) return false;
-      return new Date(t.due_date) < new Date();
-    }).length
+    pending: todos.filter(t => !t.completed).length
   };
 
   return {
